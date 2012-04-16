@@ -1,0 +1,7 @@
+Changes by slawdan
+======================
+
+1. Adding the accels of switch to specified tab directly, and you can change the accels of "goto tab [n]" on the preferences setting.
+
+
+2. The src/guake.py and src/prefs.py are copied from guake 0.4.2-7, so there may be incompatible issues with the current git repo. I doesn't test it, because the only purpose of this fork is to make a record for my modifications.
