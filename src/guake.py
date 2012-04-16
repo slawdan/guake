@@ -350,8 +350,12 @@ class GConfKeyHandler(object):
 
         keys = ['toggle_fullscreen', 'new_tab', 'close_tab', 'rename_tab',
                 'previous_tab', 'next_tab', 'clipboard_copy', 'clipboard_paste',
-                'quit',
+                'quit', 
                 ]
+	
+        for i in range(10):
+            keys.append('tab_' + str(i))
+
         for key in keys:
             notify_add(LKEY(key), self.reload_accelerators)
             self.client.notify(LKEY(key))
@@ -409,6 +413,56 @@ class GConfKeyHandler(object):
         if key > 0:
             self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
                                            self.guake.accel_next)
+
+        key, mask = gtk.accelerator_parse(gets('tab_0'))
+        if key > 0:
+            self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
+                                           self.guake.goto_tab(0))
+
+        key, mask = gtk.accelerator_parse(gets('tab_1'))
+        if key > 0:
+            self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
+                                           self.guake.goto_tab(1))
+
+        key, mask = gtk.accelerator_parse(gets('tab_9'))
+        if key > 0:
+            self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
+                                           self.guake.goto_tab(9))
+
+        key, mask = gtk.accelerator_parse(gets('tab_8'))
+        if key > 0:
+            self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
+                                           self.guake.goto_tab(8))
+
+        key, mask = gtk.accelerator_parse(gets('tab_7'))
+        if key > 0:
+            self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
+                                           self.guake.goto_tab(7))
+
+        key, mask = gtk.accelerator_parse(gets('tab_6'))
+        if key > 0:
+            self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
+                                           self.guake.goto_tab(6))
+
+        key, mask = gtk.accelerator_parse(gets('tab_5'))
+        if key > 0:
+            self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
+                                           self.guake.goto_tab(5))
+
+        key, mask = gtk.accelerator_parse(gets('tab_4'))
+        if key > 0:
+            self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
+                                           self.guake.goto_tab(4))
+
+        key, mask = gtk.accelerator_parse(gets('tab_3'))
+        if key > 0:
+            self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
+                                           self.guake.goto_tab(3))
+
+        key, mask = gtk.accelerator_parse(gets('tab_2'))
+        if key > 0:
+            self.accel_group.connect_group(key, mask, gtk.ACCEL_VISIBLE,
+                                           self.guake.goto_tab(2))
 
         key, mask = gtk.accelerator_parse(gets('rename_tab'))
         if key > 0:
@@ -599,6 +653,13 @@ class Guake(SimpleGladeApp):
         self.get_widget('tab-menu').connect('hide', hide_context_menu)
         self.window.connect('focus-out-event', self.on_window_losefocus)
 
+        # Handling the delete-event of the main window to avoid
+        # problems when closing it.
+        def destroy(*args):
+            self.hide()
+            return True
+        self.window.connect('delete-event', destroy)
+
         # Flag to completly disable losefocus hiding
         self.disable_losefocus_hiding = False
 
@@ -776,9 +837,9 @@ class Guake(SimpleGladeApp):
             self.add_tab()
 
         window_rect = self.get_final_window_rect()
-        self.window.move(window_rect.x, window_rect.y)
         self.window.resize(window_rect.width, window_rect.height)
         self.window.show_all()
+        self.window.move(window_rect.x, window_rect.y)
 
         try:
             # does it work in other gtk backends
@@ -906,6 +967,17 @@ class Guake(SimpleGladeApp):
             self.notebook.next_page()
         return True
 
+    def goto_tab(self, tab_index):
+        """Callback to go to the specified tab. Called by the accel key.
+        This func is a wrapped closure, so, just bind goto_tab(2) as callback 
+        directly.
+        """
+        def _goto(*args):
+            if tab_index < len(self.tabs.get_children()):
+                self.notebook.set_current_page(tab_index)
+            return True
+        return _goto
+
     def accel_rename(self, *args):
         """Callback to show the rename tab dialog. Called by the accel
         key.
@@ -956,7 +1028,10 @@ class Guake(SimpleGladeApp):
             if not val:
                 self.toolbar.hide()
         else:
+            window_rect = self.get_final_window_rect()
             self.window.unfullscreen()
+            self.window.resize(window_rect.width, window_rect.height)
+            self.window.move(window_rect.x, window_rect.y)
             self.fullscreen = False
 
             # making sure that tabbar and resizer will come back to
@@ -1073,7 +1148,40 @@ class Guake(SimpleGladeApp):
         if default_params:
             params.update(default_params)
 
+        # Environment variables are not actually parameters but they
+        # need to be set before calling terminal.fork_command()
+        # method. So I found this place good to do it.
+        self.update_proxy_vars()
         return params
+
+    def update_proxy_vars(self):
+        """This method updates http{s,}_proxy environment variables
+        with values found in gconf.
+        """
+        proxy = '/system/http_proxy/'
+        if self.client.get_bool(proxy + 'use_http_proxy'):
+            host = self.client.get_string(proxy + 'host')
+            port = self.client.get_int(proxy + 'port')
+            if self.client.get_bool(proxy + 'use_same_proxy'):
+                ssl_host = host
+                ssl_port = port
+            else:
+                ssl_host = self.client.get_string('/system/proxy/secure_host')
+                ssl_port = self.client.get_int('/system/proxy/secure_port')
+
+            if self.client.get_bool(proxy + 'use_authentication'):
+                auth_user = self.client.get_string(
+                    proxy + 'authentication_user')
+                auth_pass = self.client.get_string(
+                    proxy + 'authentication_password')
+                os.environ['http_proxy'] = 'http://%s:%s@%s:%d' % (
+                    auth_user, auth_pass, host, port)
+                os.environ['https_proxy'] = 'http://%s:%s@%s:%d' % (
+                    auth_user, auth_pass, ssl_host, ssl_port)
+            else:
+                os.environ['http_proxy'] = 'http://%s:%d' % (host, port)
+                os.environ['https_proxy'] = 'http://%s:%d' % (
+                    ssl_host, ssl_port)
 
     def add_tab(self, directory=None):
         """Adds a new tab to the terminal notebook.
